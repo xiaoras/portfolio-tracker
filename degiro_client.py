@@ -31,6 +31,13 @@ def connect() -> TradingAPI:
     credentials = get_credentials()
     trading_api = TradingAPI(credentials=credentials)
     trading_api.connect()
+
+    # Fetch and set int_account (required for most API calls)
+    client_details = trading_api.get_client_details()
+    if client_details and "data" in client_details:
+        int_account = client_details["data"].get("intAccount")
+        trading_api.credentials.int_account = int_account
+
     return trading_api
 
 
@@ -55,8 +62,13 @@ def get_portfolio(trading_api: TradingAPI) -> pd.DataFrame:
         row = {}
         for item in pos.get("value", []):
             row[item["name"]] = item.get("value")
-        if row.get("size", 0) != 0:
-            records.append(row)
+        # Keep only actual product positions (numeric id, non-zero size)
+        if row.get("size", 0) != 0 and row.get("positionType") == "PRODUCT":
+            try:
+                int(row.get("id", ""))
+                records.append(row)
+            except (ValueError, TypeError):
+                continue
 
     df = pd.DataFrame(records)
     if df.empty:
@@ -72,14 +84,20 @@ def get_portfolio(trading_api: TradingAPI) -> pd.DataFrame:
         id_to_name = {}
         id_to_symbol = {}
         id_to_currency = {}
+        id_to_isin = {}
+        id_to_exchange = {}
         for pid, info in products_info["data"].items():
             id_to_name[int(pid)] = info.get("name", "Unknown")
             id_to_symbol[int(pid)] = info.get("symbol", "")
             id_to_currency[int(pid)] = info.get("currency", "")
+            id_to_isin[int(pid)] = info.get("isin", "")
+            id_to_exchange[int(pid)] = info.get("exchangeId", "")
 
         df["product_name"] = df["id"].astype(int).map(id_to_name)
         df["symbol"] = df["id"].astype(int).map(id_to_symbol)
         df["currency"] = df["id"].astype(int).map(id_to_currency)
+        df["isin"] = df["id"].astype(int).map(id_to_isin)
+        df["exchange_id"] = df["id"].astype(int).map(id_to_exchange)
 
     return df
 

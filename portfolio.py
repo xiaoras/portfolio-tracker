@@ -34,8 +34,15 @@ def compute_portfolio_value_over_time(
         if size == 0:
             continue
 
+        exchange_id = row.get("exchange_id", "")
+        isin = row.get("isin", "")
+
         try:
-            prices = get_price_history(symbol, start, end)
+            prices = get_price_history(
+                symbol, start, end,
+                exchange_id=str(exchange_id),
+                isin=str(isin),
+            )
             if prices.empty:
                 continue
             daily_values[symbol] = prices["Close"] * size

@@ -2,18 +2,11 @@ steps:
 
 - id: "Build Docker Container Image"
   name: gcr.io/cloud-builders/docker
-  args: ['build', '-t', 'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:${SHORT_SHA}', '.']
+  args: ['build', '-t', 'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:latest', '.']
 
 - id: "Push Container Image to Google Container Registry"
   name: gcr.io/cloud-builders/docker
-  args: ['push', 'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:${SHORT_SHA}']
-
-- id: "Add 'latest' Tag to Container Image"
-  name: gcr.io/cloud-builders/gcloud
-  args: ['container', 'images', 'add-tag',
-         'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:${SHORT_SHA}',
-         'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:latest',
-         '--quiet']
+  args: ['push', 'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:latest']
 
 - id: "Deploy Container Image to Google Cloud Run"
   name: gcr.io/cloud-builders/gcloud
@@ -27,10 +20,16 @@ steps:
          '--set-secrets', 'DEGIRO_USERNAME=DEGIRO_USERNAME:latest,DEGIRO_PASSWORD=DEGIRO_PASSWORD:latest,DEGIRO_TOTP_SECRET=DEGIRO_TOTP_SECRET:latest',
          '--allow-unauthenticated']
 
-- id: "Delete build artifacts"
-  name: gcr.io/cloud-builders/gsutil
+- id: "Delete old untagged container images"
+  name: gcr.io/cloud-builders/gcloud
   entrypoint: bash
-  args: ['-c', 'gsutil rm -r gs://eu.artifacts.${PROJECT_ID}.appspot.com || true']
+  args:
+    - '-c'
+    - |
+      for digest in $(gcloud container images list-tags eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME} --filter="NOT tags:latest" --format="get(digest)" 2>/dev/null); do
+        gcloud container images delete "eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}@$digest" --quiet --force-delete-tags 2>/dev/null || true
+      done
+
 
 timeout: 1200s
 substitutions:
