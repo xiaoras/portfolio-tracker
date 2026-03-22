@@ -24,7 +24,7 @@ steps:
          '--port', '8080',
          '--timeout', '1800',
          '--platform', 'managed',
-         '--set-secrets', 'DEGIRO_USERNAME=DEGIRO_USERNAME:latest,DEGIRO_PASSWORD=DEGIRO_PASSWORD:latest',
+         '--set-secrets', 'DEGIRO_USERNAME=DEGIRO_USERNAME:latest,DEGIRO_PASSWORD=DEGIRO_PASSWORD:latest,DEGIRO_TOTP_SECRET=DEGIRO_TOTP_SECRET:latest',
          '--allow-unauthenticated']
 
 - id: "Delete build artifacts"

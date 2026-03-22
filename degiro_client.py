@@ -1,33 +1,29 @@
-"""DEGIRO broker integration via degiro-connector."""
+"""DEGIRO broker integration via degiro-connector v3."""
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, date
 
 import pandas as pd
 from dotenv import load_dotenv
 from degiro_connector.trading.api import API as TradingAPI
-from degiro_connector.trading.models.credentials import build_credentials
+from degiro_connector.trading.models.credentials import Credentials
 from degiro_connector.trading.models.account import (
-    UpdateRequest as AccountUpdateRequest,
-    UpdateOption as AccountUpdateOption,
+    UpdateRequest,
+    UpdateOption,
+    OverviewRequest,
 )
-from degiro_connector.trading.models.transaction import (
-    TransactionsRequest,
-)
+from degiro_connector.trading.models.transaction import HistoryRequest
 
 load_dotenv()
 
 
-def get_credentials():
-    creds_dict = {
-        "int_account": None,
-        "username": os.getenv("DEGIRO_USERNAME"),
-        "password": os.getenv("DEGIRO_PASSWORD"),
-    }
+def get_credentials() -> Credentials:
     totp_secret = os.getenv("DEGIRO_TOTP_SECRET")
-    if totp_secret:
-        creds_dict["totp_secret_key"] = totp_secret
-    return build_credentials(override=creds_dict)
+    return Credentials(
+        username=os.getenv("DEGIRO_USERNAME"),
+        password=os.getenv("DEGIRO_PASSWORD"),
+        totp_secret_key=totp_secret if totp_secret else None,
+    )
 
 
 def connect() -> TradingAPI:
@@ -40,20 +36,20 @@ def connect() -> TradingAPI:
 
 def get_portfolio(trading_api: TradingAPI) -> pd.DataFrame:
     """Fetch current portfolio positions."""
-    portfolio = trading_api.get_update(
+    update = trading_api.get_update(
         request_list=[
-            AccountUpdateRequest(
-                option=AccountUpdateOption.PORTFOLIO,
+            UpdateRequest(
+                option=UpdateOption.PORTFOLIO,
                 last_updated=0,
             ),
         ],
         raw=True,
     )
 
-    if not portfolio or "portfolio" not in portfolio:
+    if not update or "portfolio" not in update:
         return pd.DataFrame()
 
-    positions = portfolio["portfolio"]["value"]
+    positions = update["portfolio"]["value"]
     records = []
     for pos in positions:
         row = {}
@@ -94,16 +90,18 @@ def get_transactions(
     to_date: datetime,
 ) -> pd.DataFrame:
     """Fetch transaction history."""
-    request = TransactionsRequest(
-        from_date=from_date,
-        to_date=to_date,
+    request = HistoryRequest(
+        from_date=date(from_date.year, from_date.month, from_date.day),
+        to_date=date(to_date.year, to_date.month, to_date.day),
     )
-    transactions = trading_api.get_transactions(request=request, raw=True)
+    result = trading_api.get_transactions_history(
+        transaction_request=request, raw=True
+    )
 
-    if not transactions:
+    if not result or "data" not in result:
         return pd.DataFrame()
 
-    df = pd.DataFrame(transactions)
+    df = pd.DataFrame(result["data"])
     if not df.empty and "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
     return df
@@ -115,16 +113,18 @@ def get_account_overview(
     to_date: datetime,
 ) -> pd.DataFrame:
     """Fetch account overview including dividends."""
-    account_overview = trading_api.get_account_overview(
-        from_date=from_date,
-        to_date=to_date,
-        raw=True,
+    overview_request = OverviewRequest(
+        from_date=date(from_date.year, from_date.month, from_date.day),
+        to_date=date(to_date.year, to_date.month, to_date.day),
+    )
+    result = trading_api.get_account_overview(
+        overview_request=overview_request, raw=True
     )
 
-    if not account_overview or "cashMovements" not in account_overview:
+    if not result or "cashMovements" not in result:
         return pd.DataFrame()
 
-    df = pd.DataFrame(account_overview["cashMovements"])
+    df = pd.DataFrame(result["cashMovements"])
     if not df.empty and "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
     return df
