@@ -29,7 +29,8 @@ steps:
 
 - id: "Delete build artifacts"
   name: gcr.io/cloud-builders/gsutil
-  args: ['rm', '-r', 'gs://eu.artifacts.${PROJECT_ID}.appspot.com']
+  entrypoint: bash
+  args: ['-c', 'gsutil rm -r gs://eu.artifacts.${PROJECT_ID}.appspot.com || true']
 
 timeout: 1200s
 substitutions:
