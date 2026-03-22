@@ -1,0 +1,37 @@
+steps:
+
+- id: "Build Docker Container Image"
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '-t', 'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:${SHORT_SHA}', '.']
+
+- id: "Push Container Image to Google Container Registry"
+  name: gcr.io/cloud-builders/docker
+  args: ['push', 'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:${SHORT_SHA}']
+
+- id: "Add 'latest' Tag to Container Image"
+  name: gcr.io/cloud-builders/gcloud
+  args: ['container', 'images', 'add-tag',
+         'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:${SHORT_SHA}',
+         'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:latest',
+         '--quiet']
+
+- id: "Deploy Container Image to Google Cloud Run"
+  name: gcr.io/cloud-builders/gcloud
+  args: ['run', 'deploy', '${_APP_NAME}',
+         '--image', 'eu.gcr.io/${PROJECT_ID}/${_PROJECT_NAME}:latest',
+         '--region', 'europe-west1',
+         '--service-account', 'secret-manager-accesor@central-forge.iam.gserviceaccount.com',
+         '--port', '8080',
+         '--timeout', '1800',
+         '--platform', 'managed',
+         '--set-secrets', 'DEGIRO_USERNAME=DEGIRO_USERNAME:latest,DEGIRO_PASSWORD=DEGIRO_PASSWORD:latest',
+         '--allow-unauthenticated']
+
+- id: "Delete build artifacts"
+  name: gcr.io/cloud-builders/gsutil
+  args: ['rm', '-r', 'gs://eu.artifacts.${PROJECT_ID}.appspot.com']
+
+timeout: 1200s
+substitutions:
+    _PROJECT_NAME: portfolio-tracker
+    _APP_NAME: portfolio-tracker
