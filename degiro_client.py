@@ -121,7 +121,7 @@ def get_transactions(
 
     df = pd.DataFrame(result["data"])
     if not df.empty and "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
+        df["date"] = pd.to_datetime(df["date"], utc=True)
     return df
 
 
@@ -139,13 +139,72 @@ def get_account_overview(
         overview_request=overview_request, raw=True
     )
 
-    if not result or "cashMovements" not in result:
+    # The response nests data under "data" key
+    if not result:
         return pd.DataFrame()
 
-    df = pd.DataFrame(result["cashMovements"])
+    data = result.get("data", result)  # handle both nested and flat
+    if "cashMovements" not in data:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(data["cashMovements"])
     if not df.empty and "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
+        df["date"] = pd.to_datetime(df["date"], utc=True)
     return df
+
+
+def get_transactions_enriched(
+    trading_api: TradingAPI,
+    from_date: datetime,
+    to_date: datetime,
+) -> pd.DataFrame:
+    """Fetch transaction history enriched with product info (symbol, isin, exchange)."""
+    txns = get_transactions(trading_api, from_date, to_date)
+    if txns.empty:
+        return txns
+
+    product_ids = txns["productId"].unique().tolist()
+    products_info = trading_api.get_products_info(
+        product_list=product_ids, raw=True
+    )
+
+    if products_info and "data" in products_info:
+        pid_map = {}
+        for pid, info in products_info["data"].items():
+            pid_map[int(pid)] = {
+                "symbol": info.get("symbol", ""),
+                "product_name": info.get("name", ""),
+                "isin": info.get("isin", ""),
+                "exchange_id": info.get("exchangeId", ""),
+                "product_currency": info.get("currency", ""),
+            }
+
+        for col in ["symbol", "product_name", "isin", "exchange_id", "product_currency"]:
+            txns[col] = txns["productId"].map(
+                lambda pid, c=col: pid_map.get(int(pid), {}).get(c, "")
+            )
+
+    return txns
+
+
+def get_cash_deposits(
+    trading_api: TradingAPI,
+    from_date: datetime,
+    to_date: datetime,
+) -> pd.DataFrame:
+    """Extract external cash deposits from account overview."""
+    df = get_account_overview(trading_api, from_date, to_date)
+    if df.empty:
+        return df
+
+    # "flatex Deposit" entries are actual bank transfers into the account
+    deposit_mask = df["description"].str.contains(
+        "flatex Deposit", case=False, na=False
+    )
+    deposits = df[deposit_mask].copy()
+    if not deposits.empty:
+        deposits = deposits[deposits["currency"] == "EUR"]
+    return deposits
 
 
 def get_dividends(

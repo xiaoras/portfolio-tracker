@@ -5,6 +5,14 @@ from datetime import datetime
 import pandas as pd
 import yfinance as yf
 
+# Override map: DEGIRO symbol -> yfinance ticker, for products where the
+# automatic exchange-suffix resolution fails (delisted, renamed, different
+# ticker on yfinance, etc.).  Add entries here when you find mismatches.
+DEGIRO_SYMBOL_OVERRIDES = {
+    "LCWD": "LCUW.DE",    # Amundi MSCI World V UCITS ETF Acc (LU1781541179)
+    "EMAE": "SPYA.DE",    # SPDR MSCI EM Asia — same fund, different listing name
+}
+
 # Map DEGIRO exchangeId to yfinance ticker suffix (primary, then fallbacks)
 # See https://help.yahoo.com/kb/exchanges-data-providers-yahoo-finance-sln2310.html
 DEGIRO_EXCHANGE_TO_YF_SUFFIXES = {
@@ -49,6 +57,10 @@ def _prepare_symbol(symbol: str, suffix: str) -> str:
 
 def resolve_yf_ticker_candidates(symbol: str, exchange_id: str = "") -> list[str]:
     """Return a list of yfinance ticker candidates to try, in priority order."""
+    # Check override map first
+    if symbol in DEGIRO_SYMBOL_OVERRIDES:
+        return [DEGIRO_SYMBOL_OVERRIDES[symbol]]
+
     suffixes = DEGIRO_EXCHANGE_TO_YF_SUFFIXES.get(str(exchange_id), [""])
     candidates = [_prepare_symbol(symbol, s) for s in suffixes]
 
